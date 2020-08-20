@@ -5,16 +5,15 @@ using UnityEngine;
 public class Spawner : MonoBehaviour
 {
     public int number;
-    public Transform prefab;
+    public GameObject prefab;
     public float size = 5f;
 
-    private Color color;
+    public BoidSettings settings;
+    public Transform target;
 
     // Start is called before the first frame update
     void Start()
     {
-        color = Color.white;
-        color.a = 0.2f;
 
         for (int i = 0; i < number; i++)
         {
@@ -25,13 +24,14 @@ public class Spawner : MonoBehaviour
 
             Quaternion rotation = Quaternion.Euler(theta, theta1, 0);
 
-            Instantiate(prefab, position, rotation);
+            GameObject boid = Instantiate(prefab, position, rotation);
+            boid.GetComponent<Boid>().Initialize(settings, target);
         }
     }
 
-    private void OnDrawGizmosSelected()
+    private void OnDrawGizmos()
     {
-        Gizmos.color = color;
+        Gizmos.color = Color.white;
         Gizmos.DrawWireCube(transform.position, new Vector3(size*2, size*2, size*2));
     }
 }
