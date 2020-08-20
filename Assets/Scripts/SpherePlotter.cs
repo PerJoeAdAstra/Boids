@@ -6,11 +6,8 @@ public class SpherePlotter : MonoBehaviour
 {
     public Transform prefab;
 
-    private List<Transform> prefabs = null;
-
-    public float radius;
     public int numberOfDirections;
-    public float testAngle;
+    public float viewAngle;
 
     // Start is called before the first frame update
     void Start()
@@ -45,12 +42,11 @@ public class SpherePlotter : MonoBehaviour
     private void PlotSphere()
     {
         List<Vector3> directions = new List<Vector3>();
-        List<bool> angle = new List<bool>();
         for (int i = 0; i < numberOfDirections; i++)
         {
             float temp = i + 0.5f;
             float phi = Mathf.Acos(1f - 2f * temp / numberOfDirections);
-            angle.Add(Mathf.Rad2Deg * phi < testAngle);
+            if (Mathf.Rad2Deg * phi < viewAngle) continue;
             float theta = Mathf.PI * (1 + Mathf.Pow(5, 0.5f)) * temp;
                                             //cos(theta)     * sin(phi),             sin(theta) * sin(phi),       cos(phi);
             Vector3 direction = new Vector3(Mathf.Cos(theta) * Mathf.Sin(phi), Mathf.Sin(theta) * Mathf.Sin(phi), Mathf.Cos(phi));
@@ -60,10 +56,6 @@ public class SpherePlotter : MonoBehaviour
         foreach (Vector3 direction in directions)
         {
             GameObject obj = Instantiate(prefab, direction, Quaternion.identity).gameObject;
-
-            MeshRenderer meshRenderer = obj.GetComponent<MeshRenderer>();
-            if (angle[directions.IndexOf(direction)])
-                meshRenderer.material.color = Color.red;
         }
     }
 }

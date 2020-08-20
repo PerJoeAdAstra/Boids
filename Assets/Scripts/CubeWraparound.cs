@@ -29,7 +29,7 @@ public class CubeWraparound : MonoBehaviour
 
     private void Update()
     {
-        Vector3 pos = transform.position; 
+        Vector3 pos = transform.position;
 
         if(pos.x > xWorldMax)
         {

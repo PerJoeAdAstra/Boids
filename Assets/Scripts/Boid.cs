@@ -11,11 +11,10 @@ public class Boid : MonoBehaviour
     public bool randomiseColor = true;
 
     [Header("Movement Settings")]
-    public float speed = 2f;
-    public float turnSpeed = 2f;
-    public float collisionAvoidDistance = 0.2f;
-    public float similarDirectionDistance = 1f;
-    public float maxSlowAngle = 90f;
+    public float maxSpeed = 2f;
+    public float minSpeed = 5f;
+    public float turnSpeed = 5f;
+
     [Header("Movement Weights")]
     public float avoidBoidsWeight = 10f;
     public float avoidObstaclesWeight = 10f;
@@ -23,22 +22,29 @@ public class Boid : MonoBehaviour
     public float boidCentreWeight = 1f;
 
     [Header("Vision Settings")]
-    public int visionSamples = 200;
     public float visionConeAngle = 260f;
-
+    public float radius = 0.2f;
+    public float collisionAvoidDistance = 1f;
+    public float similarDirectionDistance = 1f;
+    public float maxAvoidObstacleDistance = 0.5f;
+    public LayerMask obstacleLayerMask;
 
     [Header("Debugging options")]
     public bool selected = false;
     public bool move = true;
     public bool turn = true;
 
-    
-    //More Here
 
-    private Vector3 avoidBoidsVector = new Vector3(0f, 0f, 0f);
-    private Vector3 similarDirectionVector = new Vector3(0f, 0f, 0f);
-    private Vector3 boidCentreVector = new Vector3(0f, 0f, 0f);
-    private Vector3 avoidObstaclesVector = new Vector3(0f, 0f, 0f);
+    //Current State
+    private Vector3 velocity;
+    private Vector3 acceleration;
+
+    //To update
+    private Vector3 avoidBoidsVector;
+    private Vector3 similarDirectionVector;
+    private Vector3 boidCentreVector;
+    private Vector3 avoidObstaclesVector;
+    
 
     private MeshRenderer meshRenderer;
     private Color startColour;
@@ -46,12 +52,23 @@ public class Boid : MonoBehaviour
     private float boidCentreAdjustableWeight;
     private float avoidBoidsAdjustableWeight;
     private float adjustableSpeed;
+    private float adjustableTurnSpeed;
+    private float maxInteractDistance;
+
+
+    private List<Transform> nearbyBoids;
+
+    public void Initialize()
+    {
+        float startSpeed = (minSpeed + maxSpeed) / 2;
+        velocity = transform.forward * startSpeed;
+    }
+
 
     void Awake()
     {
         boidCentreAdjustableWeight = boidCentreWeight;
         avoidBoidsAdjustableWeight = avoidBoidsWeight;
-        adjustableSpeed = speed;
 
         meshRenderer = GetComponentInChildren<MeshRenderer>();
         startColour = meshRenderer.material.color;
@@ -60,7 +77,11 @@ public class Boid : MonoBehaviour
             startColour = startColour + new Color(Random.Range(-0.5f, 0.5f), Random.Range(-0.5f, 0.5f), Random.Range(-0.5f, 0.5f));
 
         meshRenderer.material.color = startColour;
+
+        maxInteractDistance = Mathf.Max(collisionAvoidDistance, similarDirectionDistance);
+        Initialize();
     }
+
 
     public void Highlight()
     {
@@ -79,218 +100,166 @@ public class Boid : MonoBehaviour
             Highlight();
         else
             DeHighlight();
-        Move();
-    }
 
-    private void Move()
-    {
+        Vector3 acceleration = Vector3.zero;
+
+        /*
+        if (target)
+        {
+            Vector3 targetDirection = target.position - this.transform.position;
+            acceleration = SteerTowards(targetDirections) * targetWeight;
+        }
+        */
+
+        nearbyBoids = GetNearbyBoids();
 
         // Rule #1: Separation - Steer away from nearby boids to avoid crashing into them
-        UpdateAvoidBoidVector();
-
-        // Rule #1.1: Steer away from environment to avoid crashing into environment
-        //UpdateAvoidEnvironmentVector();
+        avoidBoidsVector = SteerTowards(CalculateAvoidBoidVector() * avoidBoidsWeight);
+        
 
         // Rule #2: Alignment - Steer in the same direction as the nearbyBoids
-        UpdateSimiarDirectionVector();
+        similarDirectionVector = SteerTowards(CalculateSimilarDirectionVector() * similarDirectionWeight);
 
         // Rule #3: Cohesion - Head towards the centre of nearby boids
-        UpdateBoidCentreVector();
+        boidCentreVector = SteerTowards(CalculateBoidCentreVector() * avoidBoidsAdjustableWeight);
 
-        //If you need to turn you should slow down
+        acceleration += avoidBoidsVector;
+        acceleration += similarDirectionVector;
+        acceleration += boidCentreVector;
 
-        Vector3 directionVector = transform.forward + (avoidBoidsWeight * avoidBoidsVector) + (similarDirectionWeight * similarDirectionVector) + (boidCentreAdjustableWeight * boidCentreVector);
-        directionVector.Normalize();
-
-        AdjustSpeed(directionVector);
-        if(selected)
-            Debug.DrawLine(transform.position, transform.position + ((directionVector)*adjustableSpeed/speed));
-
-        if(turn)
-            SteerTowards(directionVector);
+        // Rule #1.1: Steer away from environment to avoid crashing into environment
+        if (IsHeadingForEnvironmentCollision())
+        {
+            Vector3 avoidObstaclesVector = NonCollidingPath();
+            Vector3 collisionAvoidVector = SteerTowards(avoidObstaclesVector) * avoidObstaclesWeight;
+            acceleration += collisionAvoidVector;
+        }
         
+        velocity += acceleration * Time.deltaTime;
+        float speed = velocity.magnitude;
+        Vector3 dir = velocity / speed;
+        speed = Mathf.Clamp(speed, minSpeed, maxSpeed);
+        velocity = dir * speed;
+        if(selected)
+            Debug.DrawLine(transform.position, transform.position + velocity, Color.red);
+
         if(move)
-            MoveForwards();
+            transform.position += velocity * Time.deltaTime;
+        
+        if(turn)
+            transform.forward = dir;
     }
 
-    private void AdjustSpeed(Vector3 dir)
+    private List<Transform> GetNearbyBoids()
     {
+        GameObject[] allBoids = GameObject.FindGameObjectsWithTag(boidTag);
 
-        float angle = Mathf.Clamp(Mathf.Abs(Vector3.Angle(transform.forward, dir)), 0f, maxSlowAngle);
-        if(selected)
-            //Debug.Log("Angle:" + angle + ", " + Vector3.Angle(transform.up, dir));
-        adjustableSpeed = (3* speed / 4f) + (speed / 4f) * (maxSlowAngle - angle)/maxSlowAngle;
-    }
-
-    private void SteerTowards(Vector3 dir)
-    {
-        Quaternion lookRotation = Quaternion.LookRotation(dir, transform.forward);
-
-        Quaternion rotation = Quaternion.Lerp(transform.rotation, lookRotation, Time.deltaTime * turnSpeed);
-
-        transform.rotation = rotation;
-
-        if(selected)
-            Debug.DrawLine(transform.position, transform.position + transform.forward, Color.cyan);
-    }
-
-    //FixThis - Use velocity instead?
-    private void MoveForwards()
-    {
-        transform.Translate(transform.forward * adjustableSpeed * Time.deltaTime, Space.World);
-    }
-
-    private void LookInDirection(Vector3 direction)
-    {
-        float angle = Mathf.Atan2(direction.y, direction.x) * Mathf.Rad2Deg - 90f;
-        transform.rotation = Quaternion.AngleAxis(angle, Vector3.forward);
-    }
-    
-    //Update vector to avoid other boids
-    private void UpdateAvoidBoidVector()
-    {
-        GameObject[] boids = GameObject.FindGameObjectsWithTag(boidTag);
-
-        //Debug.Log(boids.Length);
-
-        Vector3 avoidVector = new Vector3(0f, 0f, 0f);
-        foreach (GameObject boid in boids)
+        List<Transform> detectedBoids = new List<Transform>();
+        foreach (GameObject boid in allBoids)
         {
             if (boid == this.gameObject) continue; //Don't need to do this for self
             float distance = Vector3.Distance(this.transform.position, boid.transform.position);
-            if (distance < collisionAvoidDistance) //Check boid is within distance
+            if (distance < maxInteractDistance) //Check boid is within distance
             {
                 Vector3 directionToBoid = boid.transform.position - transform.position;
-                if (Vector3.Angle(this.transform.forward, directionToBoid) < visionConeAngle/2f) //check is within viewing angle
+                if (Vector3.Angle(this.transform.forward, directionToBoid) < visionConeAngle / 2f) //check is within viewing angle
                 {
-                    if (selected)
-                        Debug.DrawLine(this.transform.position, boid.transform.position, Color.red);
-                    avoidVector -= directionToBoid.normalized * (collisionAvoidDistance - distance);
+                    detectedBoids.Add(boid.transform);
                 }
             }
         }
-        avoidBoidsVector = avoidVector.normalized;
+        return detectedBoids;
+    }
+
+    private Vector3 SteerTowards(Vector3 dir)
+    {
+        Vector3 temp = dir.normalized * maxSpeed - velocity;
+        return temp;
+    }
+    
+    //Update vector to avoid other boids
+    private Vector3 CalculateAvoidBoidVector()
+    {
+        Vector3 avoidVector = new Vector3(0f, 0f, 0f);
+        foreach (Transform boid in nearbyBoids)
+        {
+            float distance = Vector3.Distance(boid.position, this.transform.position);
+
+            if (distance > collisionAvoidDistance)
+                continue;
+
+            Vector3 directionToBoid = boid.position - this.transform.position;
+            
+            if (selected)
+                Debug.DrawLine(this.transform.position, boid.transform.position, Color.red);
+            avoidVector -= directionToBoid.normalized * (collisionAvoidDistance - distance);
+        }
+        return avoidVector;
     }
 
     //Update vector to find common direction with neighbours
-    private void UpdateSimiarDirectionVector()
+    private Vector3 CalculateSimilarDirectionVector()
     {
-        GameObject[] boids = GameObject.FindGameObjectsWithTag(boidTag);
-
         Vector3 simDirVector = new Vector3(0f, 0f, 0f);
-        foreach (GameObject boid in boids)
+        foreach (Transform boid in nearbyBoids)
         {
-            if (boid == this.gameObject) continue; //Don't need to do this for self
-            float distance = Vector3.Distance(transform.position, boid.transform.position);
-            if (distance < similarDirectionDistance) //Check boid is within distance
-            {
-                Vector3 directionToBoid = transform.position - boid.transform.position;
-                if (Vector3.Angle(this.transform.forward, directionToBoid) < visionConeAngle) //check is within viewing angle
-                {
-                    if (selected)
-                        Debug.DrawLine(this.transform.position, boid.transform.position, Color.green);
-                    simDirVector += boid.transform.forward;
-                }
-            }
+            if (selected)
+                Debug.DrawLine(this.transform.position, boid.transform.position, Color.green);
+            simDirVector += boid.transform.forward;
         }
-        similarDirectionVector = simDirVector.normalized;
+        return simDirVector;
     }
 
-    private void UpdateBoidCentreVector()
+    private Vector3 CalculateBoidCentreVector()
     {
-        GameObject[] boids = GameObject.FindGameObjectsWithTag(boidTag);
-
-        Vector3 centreVector = new Vector3(0f, 0f, 0f);
-        int boidCount = 0;
-        foreach (GameObject boid in boids)
+        Vector3 centreVector = Vector3.zero;
+        foreach (Transform boid in nearbyBoids)
         {
-            if (boid == this.gameObject) continue; //Don't need to do this for self
-            float distance = Vector3.Distance(transform.position, boid.transform.position);
-            if (distance < similarDirectionDistance) //Check boid is within distance
-            {
-                Vector3 directionToBoid = transform.position - boid.transform.position;
-                if (Vector3.Angle(this.transform.forward, directionToBoid) < visionConeAngle) //check is within viewing angle
-                {
-                    centreVector += boid.transform.position;
-                    boidCount++;
-                }
-            }
+            centreVector += boid.transform.position;
         }
 
-        if (boidCount == 0)
+        if (nearbyBoids.Count == 0)
         {
             boidCentreAdjustableWeight = 0f;
-            return;
+            return Vector3.zero;
         }
 
         boidCentreAdjustableWeight = boidCentreWeight;
 
-        centreVector /= (float)boidCount;
+        centreVector /= (float)nearbyBoids.Count;
 
         if (selected)
             Debug.DrawLine(this.transform.position, centreVector, Color.blue);
 
-        boidCentreVector = centreVector - this.transform.position;
+        return centreVector - this.transform.position;
     }
-
-    /*
-    //Gets list of other boids that the current boid can see
-    private List<Transform> GetVisibleBoids()
-    {
-        GameObject[] boids = GameObject.FindGameObjectsWithTag(boidTag);
-
-        List<Transform> boidsInRange = new List<Transform>();
-        foreach (GameObject boid in boids)
-        {
-            if (boid == this) continue; //Don't need to do this for self
-            float distance = Vector3.Distance(transform.position, boid.transform.position);
-            if (distance < collisionAvoidDistance) //Check boid is within distance
-            {
-                Vector3 directionToBoid = transform.position - boid.transform.position;
-                if(Vector3.Angle(forward, directionToBoid) < visionConeAngle) //check is within viewing angle
-                {
-                    boidsInRange.Add(boid.transform);
-                }
-            }
-        }
-        return boidsInRange;
-    }
-    */
-
-
-    //LOOP OVER ALL OTHER BOIDS TO SEE STUFF!
-    /*
-    private bool IsHeadingForCollision()
+    
+    private bool IsHeadingForEnvironmentCollision()
     {
         //Raycast forwards, if it is blocked we need to do something
-        RaycastHit hit;
-        Debug.DrawRay(transform.position, forward, Color.blue);
-        if (!Physics.SphereCast(transform.position, radius, forward, out hit))
-        {
-            return true;
-        }
-        return false;
+        Ray ray = new Ray(this.transform.position, this.transform.forward);
+        return (Physics.SphereCast(ray, radius, maxAvoidObstacleDistance, obstacleLayerMask));
     }
 
-    private Vector3 AvoidCollisions()
+    private Vector3 NonCollidingPath()
     {
         //Search for nearest avaliable safest direction.
         //*Also* want it to be nearest to the centre
-        //Directions don't change, store them in another class?
-
-        float angle = -visionConeAngle / 2;
-        float angleStep = visionConeAngle / (float) visionSamples;
-        for (int i = 0; i < visionSamples; i ++)
+        for (int i = 0; i < BoidHelper.directions.Length; i++)
         {
-            Vector3 rayDirection = Quaternion.Euler(-visionConeAngle/2 + i * angleStep, 0f, 0f) * forward;
-            RaycastHit hit;
-            if (!Physics.SphereCast(transform.position, radius, rayDirection, out hit))
+            Vector3 dir = transform.TransformDirection(BoidHelper.directions[i]);
+            //Debug.Log(dir);
+            Ray ray = new Ray(this.transform.position, dir);
+            if(selected)
+                Debug.DrawLine(this.transform.position, ray.direction * 100f, Color.cyan);
+            if (!Physics.SphereCast(ray, radius, maxAvoidObstacleDistance, obstacleLayerMask))
             {
-                Debug.DrawRay(transform.position, rayDirection, Color.red, 1f);
-                return rayDirection;
+                if (selected)
+                    Debug.DrawLine(this.transform.position + 0.1f * BoidHelper.directions[i], this.transform.position + ray.direction, Color.magenta);
+                return ray.direction;
             }
         }
-        return forward;
+        return this.transform.forward;
     }
-    */
+    
 }
