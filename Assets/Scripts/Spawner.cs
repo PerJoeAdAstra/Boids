@@ -29,7 +29,7 @@ public class Spawner : MonoBehaviour
         }
     }
 
-    private void OnDrawGizmos()
+    private void OnDrawGizmosSelected()
     {
         Gizmos.color = Color.white;
         Gizmos.DrawWireCube(transform.position, new Vector3(size*2, size*2, size*2));

@@ -199,7 +199,7 @@ MonoBehaviour:
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 8876810335588827480}
-  m_Enabled: 0
+  m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 0c9f57e116183f04d8735620b5cfc49c, type: 3}
   m_Name: 
@@ -221,21 +221,8 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   boidTag: Boid
   randomiseColor: 1
-  maxSpeed: 5
-  minSpeed: 2
-  turnSpeed: 3
-  avoidBoidsWeight: 5
-  avoidObstaclesWeight: 100
-  similarDirectionWeight: 1
-  boidCentreWeight: 1
-  visionConeAngle: 260
-  radius: 0.25
-  collisionAvoidDistance: 1
-  similarDirectionDistance: 2.5
-  maxAvoidObstacleDistance: 1
-  obstacleLayerMask:
-    serializedVersion: 2
-    m_Bits: 256
   selected: 0
   move: 1
   turn: 1
+  velocity: {x: 0, y: 0, z: 0}
+  acceleration: {x: 0, y: 0, z: 0}

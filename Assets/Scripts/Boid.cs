@@ -95,21 +95,21 @@ public class Boid : MonoBehaviour
         if (target)
         {
             Vector3 targetDirection = target.position - this.transform.position;
-            acceleration = SteerTowards(targetDirection) * settings.targetWeight;
+            acceleration = SteerTowards(targetDirection).normalized * settings.targetWeight;
         }
         
 
         nearbyBoids = GetNearbyBoids();
 
         // Rule #1: Separation - Steer away from nearby boids to avoid crashing into them
-        avoidBoidsVector = SteerTowards(CalculateAvoidBoidVector() * settings.avoidBoidsWeight);
+        avoidBoidsVector = SteerTowards(CalculateAvoidBoidVector().normalized * settings.avoidBoidsWeight);
         
 
         // Rule #2: Alignment - Steer in the same direction as the nearbyBoids
-        similarDirectionVector = SteerTowards(CalculateSimilarDirectionVector() * settings.similarDirectionWeight);
+        similarDirectionVector = SteerTowards(CalculateSimilarDirectionVector().normalized * settings.similarDirectionWeight);
 
         // Rule #3: Cohesion - Head towards the centre of nearby boids
-        boidCentreVector = SteerTowards(CalculateBoidCentreVector() * settings.boidCentreWeight);
+        boidCentreVector = SteerTowards(CalculateBoidCentreVector().normalized * settings.boidCentreWeight);
 
         acceleration += avoidBoidsVector;
         acceleration += similarDirectionVector;
@@ -180,7 +180,7 @@ public class Boid : MonoBehaviour
             
             if (selected)
                 Debug.DrawLine(this.transform.position, boid.transform.position, Color.red);
-            avoidVector -= directionToBoid.normalized * (settings.avoidBoidsDistance - distance);
+            avoidVector -= directionToBoid.normalized / 2f + (directionToBoid.normalized / (distance * 2f)) / 2f;
         }
         return avoidVector;
     }
