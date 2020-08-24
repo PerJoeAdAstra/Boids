@@ -4,34 +4,45 @@ using UnityEngine;
 
 public class Spawner : MonoBehaviour
 {
-    public int number;
-    public GameObject prefab;
-    public float size = 5f;
+    public enum GizmoType { Never, SelectedOnly, Always }
 
-    public BoidSettings settings;
-    public Transform target;
+    public Boid prefab;
+    public float spawnRadius = 10f;
 
-    // Start is called before the first frame update
-    void Start()
+    public int spawnCount = 10;
+    public Color colour;
+    public GizmoType showSpawnRegion;
+
+    void Awake()
     {
-
-        for (int i = 0; i < number; i++)
+        for (int i = 0; i < spawnCount; i++)
         {
-            float theta = Random.Range(0f, 360f);
-            float theta1 = Random.Range(0f, 360f);
+            Vector3 pos = transform.position + Random.insideUnitSphere * spawnRadius;
+            Boid boid = Instantiate(prefab);
+            boid.transform.position = pos;
+            boid.transform.forward = Random.insideUnitSphere;
 
-            Vector3 position = new Vector3(0, 0, 0);
-
-            Quaternion rotation = Quaternion.Euler(theta, theta1, 0);
-
-            GameObject boid = Instantiate(prefab, position, rotation);
-            boid.GetComponent<Boid>().Initialize(settings, target);
+            boid.SetColour(colour);
         }
+
+    }
+
+    private void OnDrawGizmos()
+    {
+        if (showSpawnRegion == GizmoType.Always)
+            DrawGizmos();
     }
 
     private void OnDrawGizmosSelected()
     {
-        Gizmos.color = Color.white;
-        Gizmos.DrawWireCube(transform.position, new Vector3(size*2, size*2, size*2));
+        if (showSpawnRegion == GizmoType.SelectedOnly)
+        DrawGizmos();
+    }
+
+
+    private void DrawGizmos()
+    {
+        Gizmos.color = new Color(colour.r, colour.g, colour.b, 0.3f);
+        Gizmos.DrawSphere(transform.position, spawnRadius);
     }
 }

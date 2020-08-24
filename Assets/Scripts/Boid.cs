@@ -17,43 +17,40 @@ public class Boid : MonoBehaviour
     public bool move = true;
     public bool turn = true;
 
-
-    //Current State -> update similar direction to use velocity of other boids
     [HideInInspector]
-    public Vector3 velocity;
+    public Vector3 forward;
     [HideInInspector]
-    public Vector3 acceleration;
+    public Vector3 position;
+    private Vector3 velocity;
 
-    //To update
-    private Vector3 avoidBoidsVector;
-    private Vector3 similarDirectionVector;
-    private Vector3 boidCentreVector;
-    private Vector3 avoidObstaclesVector;
-    
-    //Astetics
-    private MeshRenderer meshRenderer;
+    //To update:
+    private Vector3 acceleration;
+    [HideInInspector]
+    public Vector3 avgFlockHeading;
+    [HideInInspector]
+    public Vector3 avgAvoidanceHeading;
+    [HideInInspector]
+    public Vector3 centreOfFlockmates;
+    [HideInInspector]
+    public int numPercievedFlockmates;
+
+    //Cached
+    private Material material;
     private Color startColour;
-
-    private float boidCentreAdjustableWeight;
-    private float avoidBoidsAdjustableWeight;
-    private float adjustableSpeed;
-    private float adjustableTurnSpeed;
-    private float maxInteractDistance;
-
+    private Transform cachedTransform;
     private Transform target;
-
-
-    private List<Transform> nearbyBoids;
 
     private void Awake()
     {
-        meshRenderer = GetComponentInChildren<MeshRenderer>();
-        startColour = meshRenderer.material.color;
+        material = transform.GetComponentInChildren<MeshRenderer>().material;
+        startColour = material.color;
 
         if (randomiseColor)
             startColour = startColour + new Color(Random.Range(-0.5f, 0.5f), Random.Range(-0.5f, 0.5f), Random.Range(-0.5f, 0.5f));
 
-        meshRenderer.material.color = startColour;
+        material.color = startColour;
+
+        cachedTransform = transform;
     }
 
     public void Initialize(BoidSettings settings, Transform target)
@@ -61,30 +58,33 @@ public class Boid : MonoBehaviour
         this.settings = settings;
         this.target = target;
 
+        position = cachedTransform.position;
+        forward = cachedTransform.forward;
+
         float startSpeed = (settings.minSpeed + settings.maxSpeed) / 2;
         velocity = transform.forward * startSpeed;
+    }
 
-        boidCentreAdjustableWeight = settings.boidCentreWeight;
-        avoidBoidsAdjustableWeight = settings.avoidBoidsWeight;
-
-        maxInteractDistance = Mathf.Max(settings.avoidBoidsDistance, settings.similarDirectionDistance);
+    public void SetColour(Color col)
+    {
+        if (material != null)
+        {
+            material.color = col;
+        }
     }
 
     public void Highlight()
     {
-        meshRenderer.material.color = Color.gray;
+        material.color = Color.gray;
     }
 
     public void DeHighlight()
     {
-        meshRenderer.material.color = startColour;
+        material.color = startColour;
     }
 
-    // Update is called once per frame
-    void Update()
+    public void UpdateBoid()
     {
-        if (!settings) return;
-
         if (selected)
             Highlight();
         else
@@ -92,35 +92,39 @@ public class Boid : MonoBehaviour
 
         Vector3 acceleration = Vector3.zero;
 
-        if (target)
+        if (target != null)
         {
-            Vector3 targetDirection = target.position - this.transform.position;
-            acceleration = SteerTowards(targetDirection).normalized * settings.targetWeight;
+            Vector3 targetDirection = target.position - position;
+            acceleration = SteerTowards(targetDirection) * settings.targetWeight;
         }
-        
 
-        nearbyBoids = GetNearbyBoids();
+        if(numPercievedFlockmates != 0)
+        {
+            centreOfFlockmates /= numPercievedFlockmates;
 
-        // Rule #1: Separation - Steer away from nearby boids to avoid crashing into them
-        avoidBoidsVector = SteerTowards(CalculateAvoidBoidVector().normalized * settings.avoidBoidsWeight);
-        
+            Vector3 offsetToFlockmatesCentre = (centreOfFlockmates - position);
 
-        // Rule #2: Alignment - Steer in the same direction as the nearbyBoids
-        similarDirectionVector = SteerTowards(CalculateSimilarDirectionVector().normalized * settings.similarDirectionWeight);
+            // Rule #2: Alignment - Steer in the same direction as the nearbyBoids
+            var alignmentForce = SteerTowards(avgFlockHeading) * settings.alignWeight;
 
-        // Rule #3: Cohesion - Head towards the centre of nearby boids
-        boidCentreVector = SteerTowards(CalculateBoidCentreVector().normalized * settings.boidCentreWeight);
+            // Rule #3: Cohesion - Head towards the centre of nearby boids
+            var cohesionForce = SteerTowards(offsetToFlockmatesCentre) * settings.cohesionWeight;
 
-        acceleration += avoidBoidsVector;
-        acceleration += similarDirectionVector;
-        acceleration += boidCentreVector;
+            // Rule #1: Separation - Steer away from nearby boids to avoid crashing into them
+            var seperationForce = SteerTowards(avgAvoidanceHeading) * settings.seperateWeight;
+
+            acceleration += alignmentForce;
+            acceleration += cohesionForce;
+            acceleration += seperationForce;
+
+        }
 
         // Rule #1.1: Steer away from environment to avoid crashing into environment
         if (IsHeadingForEnvironmentCollision())
         {
-            Vector3 avoidObstaclesVector = NonCollidingPath();
-            Vector3 collisionAvoidVector = SteerTowards(avoidObstaclesVector) * settings.avoidObstaclesWeight;
-            acceleration += collisionAvoidVector;
+            Vector3 avoidObstaclesDir= NonCollidingPath();
+            Vector3 collisionAvoidForce = SteerTowards(avoidObstaclesDir) * settings.avoidCollisionsWeight;
+            acceleration += collisionAvoidForce;
         }
         
         velocity += acceleration * Time.deltaTime;
@@ -128,126 +132,39 @@ public class Boid : MonoBehaviour
         Vector3 dir = velocity / speed;
         speed = Mathf.Clamp(speed, settings.minSpeed, settings.maxSpeed);
         velocity = dir * speed;
-        if(selected)
-            Debug.DrawLine(transform.position, transform.position + velocity, Color.red);
 
-        if(move)
-            transform.position += velocity * Time.deltaTime;
-        
-        if(turn)
-            transform.forward = dir;
+        cachedTransform.position += velocity * Time.deltaTime;
+        cachedTransform.forward = dir;
+
+        position = cachedTransform.position;
+        forward = dir;
     }
 
-    private List<Transform> GetNearbyBoids()
+    private Vector3 SteerTowards(Vector3 vector)
     {
-        GameObject[] allBoids = GameObject.FindGameObjectsWithTag(boidTag);
-
-        List<Transform> detectedBoids = new List<Transform>();
-        foreach (GameObject boid in allBoids)
-        {
-            if (boid == this.gameObject) continue; //Don't need to do this for self
-            float distance = Vector3.Distance(this.transform.position, boid.transform.position);
-            if (distance < maxInteractDistance) //Check boid is within distance
-            {
-                Vector3 directionToBoid = boid.transform.position - transform.position;
-                if (Vector3.Angle(this.transform.forward, directionToBoid) < settings.visionConeAngle / 2f) //check is within viewing angle
-                {
-                    detectedBoids.Add(boid.transform);
-                }
-            }
-        }
-        return detectedBoids;
+        Vector3 v = vector.normalized * settings.maxSpeed - velocity;
+        return Vector3.ClampMagnitude(v, settings.maxSteerForce);
     }
 
-    private Vector3 SteerTowards(Vector3 dir)
-    {
-        Vector3 temp = dir.normalized * settings.maxSpeed - velocity;
-        return Vector3.ClampMagnitude(temp, settings.turnSpeed);
-    }
-    
-    //Update vector to avoid other boids
-    private Vector3 CalculateAvoidBoidVector()
-    {
-        Vector3 avoidVector = new Vector3(0f, 0f, 0f);
-        foreach (Transform boid in nearbyBoids)
-        {
-            float distance = Vector3.Distance(boid.position, this.transform.position);
-
-            if (distance > settings.avoidBoidsDistance)
-                continue;
-
-            Vector3 directionToBoid = boid.position - this.transform.position;
-            
-            if (selected)
-                Debug.DrawLine(this.transform.position, boid.transform.position, Color.red);
-            avoidVector -= directionToBoid.normalized / 2f + (directionToBoid.normalized / (distance * 2f)) / 2f;
-        }
-        return avoidVector;
-    }
-
-    //Update vector to find common direction with neighbours
-    private Vector3 CalculateSimilarDirectionVector()
-    {
-        Vector3 simDirVector = new Vector3(0f, 0f, 0f);
-        foreach (Transform boid in nearbyBoids)
-        {
-            if (selected)
-                Debug.DrawLine(this.transform.position, boid.transform.position, Color.green);
-            simDirVector += boid.transform.forward;
-        }
-        return simDirVector;
-    }
-
-    private Vector3 CalculateBoidCentreVector()
-    {
-        Vector3 centreVector = Vector3.zero;
-        foreach (Transform boid in nearbyBoids)
-        {
-            centreVector += boid.transform.position;
-        }
-
-        if (nearbyBoids.Count == 0)
-        {
-            boidCentreAdjustableWeight = 0f;
-            return Vector3.zero;
-        }
-
-        boidCentreAdjustableWeight = settings.boidCentreWeight;
-
-        centreVector /= (float)nearbyBoids.Count;
-
-        if (selected)
-            Debug.DrawLine(this.transform.position, centreVector, Color.blue);
-
-        return centreVector - this.transform.position;
-    }
-    
     private bool IsHeadingForEnvironmentCollision()
     {
-        //Raycast forwards, if it is blocked we need to do something
-        Ray ray = new Ray(this.transform.position, this.transform.forward);
-        return (Physics.SphereCast(ray, settings.sphereCastRadius, settings.avoidObstaclesDistance, settings.obstacleLayerMask));
+        RaycastHit hit;
+        return Physics.SphereCast(position, settings.boundsRadius, forward, out hit, settings.collisionAvoidDst, settings.obstacleMask);
     }
 
     private Vector3 NonCollidingPath()
     {
-        //Search for nearest avaliable safest direction.
-        //*Also* want it to be nearest to the centre
+        Vector3[] rayDirections = BoidHelper.directions;
+
         for (int i = 0; i < BoidHelper.directions.Length; i++)
         {
-            Vector3 dir = transform.TransformDirection(BoidHelper.directions[i]);
-            //Debug.Log(dir);
-            Ray ray = new Ray(this.transform.position, dir);
-            if(selected)
-                Debug.DrawLine(this.transform.position, ray.direction * 100f, Color.cyan);
-            if (!Physics.SphereCast(ray, settings.sphereCastRadius, settings.avoidObstaclesDistance, settings.obstacleLayerMask))
+            Vector3 dir = cachedTransform.TransformDirection(rayDirections[i]);
+            Ray ray = new Ray(position, dir);
+            if (!Physics.SphereCast(ray, settings.boundsRadius, settings.collisionAvoidDst, settings.obstacleMask))
             {
-                if (selected)
-                    Debug.DrawLine(this.transform.position + 0.1f * BoidHelper.directions[i], this.transform.position + ray.direction, Color.magenta);
-                return ray.direction;
+                return dir;
             }
         }
-        return this.transform.forward;
+        return forward;
     }
-    
 }
