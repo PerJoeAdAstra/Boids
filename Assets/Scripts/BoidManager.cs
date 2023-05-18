@@ -22,8 +22,7 @@ public class BoidManager : MonoBehaviour
             }
         }
     }
-
-
+    
     const int threadGroupSize = 1024;
 
     public Transform target = null;
@@ -38,7 +37,7 @@ public class BoidManager : MonoBehaviour
         boids = FindObjectsOfType<Boid>();
         foreach(Boid b in boids)
         {
-            b.Initialize(settings, target);
+            b.Initialize(settings);
         }
     }
 

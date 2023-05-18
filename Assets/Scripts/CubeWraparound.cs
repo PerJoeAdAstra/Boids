@@ -2,11 +2,8 @@
 
 public class CubeWraparound : MonoBehaviour
 {
-    [HideInInspector]
-    public Camera mainCamera;
-
     public Vector3 cubeCentre = new Vector3(0f, 0f, 0f);
-    public float cubeSize = 10f;
+    public float cubeSize = 30f;
 
 
     private float xWorldMax;
@@ -16,7 +13,7 @@ public class CubeWraparound : MonoBehaviour
     private float zWorldMax;
     private float zWorldMin;
 
-    private void Start()
+    private void Awake()
     {
         xWorldMax = cubeCentre.x + cubeSize/2f;
         xWorldMin = cubeCentre.x - cubeSize / 2f;

@@ -4,8 +4,6 @@ using System.Collections.Generic;
 
 public class Boid : MonoBehaviour
 {
-    //Organise this
-
     //Change to get from global settings
     public string boidTag = "Boid";
     public bool randomiseColor = true;
@@ -53,10 +51,9 @@ public class Boid : MonoBehaviour
         cachedTransform = transform;
     }
 
-    public void Initialize(BoidSettings settings, Transform target)
+    public void Initialize(BoidSettings settings)
     {
         this.settings = settings;
-        this.target = target;
 
         position = cachedTransform.position;
         forward = cachedTransform.forward;
@@ -71,6 +68,17 @@ public class Boid : MonoBehaviour
         {
             material.color = col;
         }
+    }
+
+    public void SetTarget(Transform transform)
+    {
+        RemoveTarget();
+        target = transform;
+    }
+
+    public void RemoveTarget()
+    {
+        target = null;
     }
 
     public void Highlight()

@@ -199,14 +199,13 @@ MonoBehaviour:
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 8876810335588827480}
-  m_Enabled: 0
+  m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 0c9f57e116183f04d8735620b5cfc49c, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  mainCamera: {fileID: 0}
-  cubeCentre: {x: 0, y: 0, z: 0}
-  cubeSize: 10
+  cubeCentre: {x: 21, y: 70, z: -14}
+  cubeSize: 110
 --- !u!114 &6841087470986867691
 MonoBehaviour:
   m_ObjectHideFlags: 0
